@@ -14,7 +14,7 @@
 
 .PHONY: all csi-snapshotter clean test
 
-REGISTRY_NAME=quay.io/k8scsi
+REGISTRY_NAME=registry.dev.arr/csi
 IMAGE_NAME=csi-snapshotter
 IMAGE_VERSION=v1.0.0-canary
 IMAGE_TAG=$(REGISTRY_NAME)/$(IMAGE_NAME):$(IMAGE_VERSION)
