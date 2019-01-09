@@ -27,14 +27,22 @@ else
 TESTARGS =
 endif
 
+GOPKG = github.com/kubernetes-csi/external-snapshotter
+
 all: csi-snapshotter
 
-csi-snapshotter:
+csi-snapshotter: workspace
 	mkdir -p bin
-	CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-X main.version=$(REV) -extldflags "-static"' -o ./bin/csi-snapshotter ./cmd/csi-snapshotter
+	GOPATH=${PWD}/workspace CGO_ENABLED=0 GOOS=linux \
+		   go build -a -ldflags '-X main.version=$(REV) -extldflags "-static"' \
+		   -o ./bin/csi-snapshotter ${GOPKG}/cmd/csi-snapshotter
+
+workspace:
+	mkdir -p workspace/src/$(dir ${GOPKG})
+	ln -s ${PWD} workspace/src/${GOPKG}
 
 clean:
-	-rm -rf bin
+	-rm -rf bin workspace
 
 container: csi-snapshotter
 	docker build -t $(IMAGE_TAG) .
