@@ -67,10 +67,22 @@ func (handler *csiHandler) CreateSnapshot(snapshot *crdv1.VolumeSnapshot, volume
 	if err != nil {
 		return "", "", 0, 0, false, err
 	}
-	newParameters, err := removePrefixedParameters(parameters)
+	tmpParameters, err := removePrefixedParameters(parameters)
 	if err != nil {
 		return "", "", 0, 0, false, fmt.Errorf("failed to remove CSI Parameters of prefixed keys: %v", err)
 	}
+
+	newParameters := map[string]string{}
+	// Add SC options
+	for key, value := range tmpParameters {
+		newParameters["sc/" + key] = value
+	}
+	// Add VS options
+	for key, value := range snapshot.Annotations {
+		newParameters["vs/" + key] = value
+	}
+	// Add VS name
+	newParameters["vs-name"] = snapshot.Name
 	return handler.snapshotter.CreateSnapshot(ctx, snapshotName, volume, newParameters, snapshotterCredentials)
 }
 
