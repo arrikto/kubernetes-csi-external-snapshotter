@@ -561,6 +561,8 @@ func (ctrl *csiSnapshotController) checkandUpdateBoundSnapshotStatusOperation(sn
 	var readyToUse = false
 	var driverName string
 	var snapshotID string
+	var progressCnt int32
+	var progressMsg string
 
 	if snapshot.Spec.Source == nil {
 		klog.V(5).Infof("checkandUpdateBoundSnapshotStatusOperation: checking whether snapshot [%s] is pre-bound to content [%s]", snapshot.Name, content.Name)
@@ -577,7 +579,7 @@ func (ctrl *csiSnapshotController) checkandUpdateBoundSnapshotStatusOperation(sn
 		if err != nil {
 			return nil, fmt.Errorf("failed to get input parameters to create snapshot %s: %q", snapshot.Name, err)
 		}
-		driverName, snapshotID, timestamp, size, readyToUse, err = ctrl.handler.CreateSnapshot(snapshot, volume, class.Parameters, snapshotterCredentials)
+		driverName, snapshotID, timestamp, size, readyToUse, progressCnt, progressMsg, err = ctrl.handler.CreateSnapshot(snapshot, volume, class.Parameters, snapshotterCredentials)
 		if err != nil {
 			klog.Errorf("checkandUpdateBoundSnapshotStatusOperation: failed to call create snapshot to check whether the snapshot is ready to use %q", err)
 			return nil, err
@@ -588,7 +590,7 @@ func (ctrl *csiSnapshotController) checkandUpdateBoundSnapshotStatusOperation(sn
 	if timestamp == 0 {
 		timestamp = time.Now().UnixNano()
 	}
-	newSnapshot, err := ctrl.updateSnapshotStatus(snapshot, readyToUse, timestamp, size, IsSnapshotBound(snapshot, content))
+	newSnapshot, err := ctrl.updateSnapshotStatus(snapshot, readyToUse, timestamp, size, IsSnapshotBound(snapshot, content), progressCnt, progressMsg)
 	if err != nil {
 		return nil, err
 	}
@@ -617,7 +619,7 @@ func (ctrl *csiSnapshotController) createSnapshotOperation(snapshot *crdv1.Volum
 		return nil, fmt.Errorf("failed to get input parameters to create snapshot %s: %q", snapshot.Name, err)
 	}
 
-	driverName, snapshotID, timestamp, size, readyToUse, err := ctrl.handler.CreateSnapshot(snapshot, volume, class.Parameters, snapshotterCredentials)
+	driverName, snapshotID, timestamp, size, readyToUse, progressCnt, progressMsg, err := ctrl.handler.CreateSnapshot(snapshot, volume, class.Parameters, snapshotterCredentials)
 	if err != nil {
 		return nil, fmt.Errorf("failed to take snapshot of the volume, %s: %q", volume.Name, err)
 	}
@@ -627,7 +629,7 @@ func (ctrl *csiSnapshotController) createSnapshotOperation(snapshot *crdv1.Volum
 	// Update snapshot status with timestamp
 	for i := 0; i < ctrl.createSnapshotContentRetryCount; i++ {
 		klog.V(5).Infof("createSnapshot [%s]: trying to update snapshot creation timestamp", snapshotKey(snapshot))
-		newSnapshot, err = ctrl.updateSnapshotStatus(snapshot, readyToUse, timestamp, size, false)
+		newSnapshot, err = ctrl.updateSnapshotStatus(snapshot, readyToUse, timestamp, size, false, progressCnt, progressMsg)
 		if err == nil {
 			break
 		}
@@ -804,7 +806,7 @@ func (ctrl *csiSnapshotController) updateSnapshotContentSize(content *crdv1.Volu
 }
 
 // UpdateSnapshotStatus converts snapshot status to crdv1.VolumeSnapshotCondition
-func (ctrl *csiSnapshotController) updateSnapshotStatus(snapshot *crdv1.VolumeSnapshot, readyToUse bool, createdAt, size int64, bound bool) (*crdv1.VolumeSnapshot, error) {
+func (ctrl *csiSnapshotController) updateSnapshotStatus(snapshot *crdv1.VolumeSnapshot, readyToUse bool, createdAt, size int64, bound bool, progressCnt int32, progressMsg string) (*crdv1.VolumeSnapshot, error) {
 	klog.V(5).Infof("updating VolumeSnapshot[]%s, readyToUse %v, timestamp %v", snapshotKey(snapshot), readyToUse, createdAt)
 	status := snapshot.Status
 	change := false
@@ -824,6 +826,11 @@ func (ctrl *csiSnapshotController) updateSnapshotStatus(snapshot *crdv1.VolumeSn
 	if status.CreationTime == nil {
 		status.CreationTime = timeAt
 		change = true
+	}
+
+	if progressCnt != 0 && progressMsg != "" {
+		progress := fmt.Sprintf("%s... (%d%%)", progressMsg, progressCnt)
+		ctrl.eventRecorder.Event(snapshotClone, v1.EventTypeNormal, "SnapshotProgress", progress)
 	}
 
 	if change {
