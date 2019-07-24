@@ -31,6 +31,7 @@ import (
 	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/util/slice"
 	"os"
+	"path"
 	"strconv"
 	"time"
 )
@@ -288,6 +289,87 @@ func getSecretReference(snapshotClassParams map[string]string, snapContentName s
 	return ref, nil
 }
 
+// getSecretReferenceMany returns a list of references to the secrets specified in the given nameTemplate
+func getSecretReferenceMany(k8s kubernetes.Interface, snapshotClassParams map[string]string, snapContentName string, snapshot *crdv1.VolumeSnapshot) ([]*v1.SecretReference, error) {
+	nameTemplate, namespaceTemplate, err := verifyAndGetSecretNameAndNamespaceTemplate(snapshotterSecretParams, snapshotClassParams)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get name and namespace template from params: %v", err)
+	}
+
+	if nameTemplate == "" && namespaceTemplate == "" {
+		return nil, nil
+	}
+
+	var refs []*v1.SecretReference
+	// Secret namespace template can make use of the VolumeSnapshotContent name or the VolumeSnapshot namespace.
+	// Note that neither of those things are under the control of the VolumeSnapshot user.
+	namespaceParams := map[string]string{"volumesnapshotcontent.name": snapContentName}
+	// snapshot may be nil when resolving create/delete snapshot secret names because the
+	// snapshot may or may not exist at delete time
+	if snapshot != nil {
+		namespaceParams["volumesnapshot.namespace"] = snapshot.Namespace
+	}
+
+	resolvedNamespace, err := resolveTemplate(namespaceTemplate, namespaceParams)
+	if err != nil {
+		klog.Warningf("could not resolve value %q: %v", namespaceTemplate, err)
+		return nil, nil
+	}
+	klog.V(4).Infof("GetSecretReference namespaceTemplate %s, namespaceParams: %+v, resolved %s", namespaceTemplate, namespaceParams, resolvedNamespace)
+
+	if len(validation.IsDNS1123Label(resolvedNamespace)) > 0 {
+		if namespaceTemplate != resolvedNamespace {
+			return nil, fmt.Errorf("%q resolved to %q which is not a valid namespace name", namespaceTemplate, resolvedNamespace)
+		}
+		return nil, fmt.Errorf("%q is not a valid namespace name", namespaceTemplate)
+	}
+
+	secrets, err := k8s.CoreV1().Secrets(resolvedNamespace).List(metav1.ListOptions{})
+	if err != nil {
+		klog.Errorf("could not list secrets in namespace %s: %v", resolvedNamespace, err)
+		return nil, nil
+	}
+
+	names := strings.Split(nameTemplate, ",")
+	for _, name := range names {
+		name = strings.TrimSpace(name)
+		// Secret name template can make use of the VolumeSnapshotContent name, VolumeSnapshot name or namespace,
+		// or a VolumeSnapshot annotation.
+		// Note that VolumeSnapshot name and annotations are under the VolumeSnapshot user's control.
+		nameParams := map[string]string{"volumesnapshotcontent.name": snapContentName}
+		if snapshot != nil {
+			nameParams["volumesnapshot.name"] = snapshot.Name
+			nameParams["volumesnapshot.namespace"] = snapshot.Namespace
+			for k, v := range snapshot.Annotations {
+				nameParams["volumesnapshot.annotations['"+k+"']"] = v
+			}
+		}
+		resolvedName, err := resolveTemplate(name, nameParams)
+		if err != nil {
+			klog.Warningf("could not resolve value %q: %v", name, err)
+			continue
+			//return nil, nil
+		}
+		found := false
+		for _, secret := range secrets.Items {
+			m, _ := path.Match(resolvedName, secret.ObjectMeta.Name)
+			if m {
+				found = true
+				ref := &v1.SecretReference{}
+				ref.Namespace = resolvedNamespace
+				ref.Name = secret.ObjectMeta.Name
+				refs = append(refs, ref)
+			}
+		}
+		if !found {
+			klog.Warningf("could not find secret %q", resolvedName)
+		}
+	}
+
+	//klog.V(4).Infof("GetSecretReference validated Secret: %+v", ref)
+	return refs, nil
+}
+
 // resolveTemplate resolves the template by checking if the value is missing for a key
 func resolveTemplate(template string, params map[string]string) (string, error) {
 	missingParams := sets.NewString()
@@ -321,6 +403,22 @@ func getCredentials(k8s kubernetes.Interface, ref *v1.SecretReference) (map[stri
 		credentials[key] = string(value)
 	}
 	return credentials, nil
+}
+
+// getCredentialsMany retrieves credentials stored in a list of v1.SecretReference
+func getCredentialsMany(k8s kubernetes.Interface, refs []*v1.SecretReference) (map[string]string, error) {
+	ret := make(map[string]string)
+	for i, ref := range refs {
+		creds, err := getCredentials(k8s, ref)
+		if err != nil {
+			return nil, err
+		}
+		for k, v := range creds {
+			name := fmt.Sprintf("%.2d/%s/%s", i, ref.Name, k)
+			ret[name] = v
+		}
+	}
+	return ret, nil
 }
 
 // NoResyncPeriodFunc Returns 0 for resyncPeriod in case resyncing is not needed.
