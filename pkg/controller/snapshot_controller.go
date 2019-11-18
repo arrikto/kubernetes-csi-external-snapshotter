@@ -672,11 +672,13 @@ func (ctrl *csiSnapshotController) createSnapshotOperation(snapshot *crdv1.Volum
 			DeletionPolicy:          class.DeletionPolicy,
 		},
 	}
+
+	var updateContent *crdv1.VolumeSnapshotContent
 	klog.V(3).Infof("volume snapshot content %v", snapshotContent)
 	// Try to create the VolumeSnapshotContent object several times
 	for i := 0; i < ctrl.createSnapshotContentRetryCount; i++ {
 		klog.V(5).Infof("createSnapshot [%s]: trying to save volume snapshot content %s", snapshotKey(snapshot), snapshotContent.Name)
-		if _, err = ctrl.clientset.VolumesnapshotV1alpha1().VolumeSnapshotContents().Create(snapshotContent); err == nil || apierrs.IsAlreadyExists(err) {
+		if updateContent, err = ctrl.clientset.VolumesnapshotV1alpha1().VolumeSnapshotContents().Create(snapshotContent); err == nil || apierrs.IsAlreadyExists(err) {
 			// Save succeeded.
 			if err != nil {
 				klog.V(3).Infof("volume snapshot content %q for snapshot %q already exists, reusing", snapshotContent.Name, snapshotKey(snapshot))
@@ -699,6 +701,12 @@ func (ctrl *csiSnapshotController) createSnapshotOperation(snapshot *crdv1.Volum
 		klog.Error(strerr)
 		ctrl.eventRecorder.Event(newSnapshot, v1.EventTypeWarning, "CreateSnapshotContentFailed", strerr)
 		return nil, newControllerUpdateError(snapshotKey(snapshot), err.Error())
+	}
+
+	// Update content in the cache store
+	_, err = ctrl.storeContentUpdate(updateContent)
+	if err != nil {
+		klog.Errorf("failed to update content store %v", err)
 	}
 
 	// save succeeded, bind and update status for snapshot.
