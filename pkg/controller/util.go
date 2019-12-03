@@ -20,6 +20,11 @@ import (
 	"fmt"
 	"strings"
 
+	"os"
+	"path"
+	"strconv"
+	"time"
+
 	crdv1 "github.com/kubernetes-csi/external-snapshotter/pkg/apis/volumesnapshot/v1alpha1"
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -30,10 +35,6 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/util/slice"
-	"os"
-	"path"
-	"strconv"
-	"time"
 )
 
 var (
@@ -290,8 +291,8 @@ func getSecretReference(snapshotClassParams map[string]string, snapContentName s
 }
 
 // getSecretReferenceMany returns a list of references to the secrets specified in the given nameTemplate
-func getSecretReferenceMany(k8s kubernetes.Interface, snapshotClassParams map[string]string, snapContentName string, snapshot *crdv1.VolumeSnapshot) ([]*v1.SecretReference, error) {
-	nameTemplate, namespaceTemplate, err := verifyAndGetSecretNameAndNamespaceTemplate(snapshotterSecretParams, snapshotClassParams)
+func getSecretReferenceMany(k8s kubernetes.Interface, secretParams deprecatedSecretParamsMap, snapshotClassParams map[string]string, snapContentName string, snapshot *crdv1.VolumeSnapshot) ([]*v1.SecretReference, error) {
+	nameTemplate, namespaceTemplate, err := verifyAndGetSecretNameAndNamespaceTemplate(secretParams, snapshotClassParams)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get name and namespace template from params: %v", err)
 	}

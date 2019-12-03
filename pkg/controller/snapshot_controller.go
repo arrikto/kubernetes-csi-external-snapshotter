@@ -542,7 +542,7 @@ func (ctrl *csiSnapshotController) getCreateSnapshotInput(snapshot *crdv1.Volume
 	contentName := GetSnapshotContentNameForSnapshot(snapshot)
 
 	// Resolve snapshotting secret credentials.
-	snapshotterSecretsRef, err := getSecretReferenceMany(ctrl.client, class.Parameters, contentName, snapshot)
+	snapshotterSecretsRef, err := getSecretReferenceMany(ctrl.client, snapshotterSecretParams, class.Parameters, contentName, snapshot)
 	if err != nil {
 		return nil, nil, "", nil, err
 	}
@@ -734,7 +734,7 @@ func (ctrl *csiSnapshotController) deleteSnapshotContentOperation(content *crdv1
 		if snapshotClass, err := ctrl.classLister.Get(*snapshotClassName); err == nil {
 			// Resolve snapshotting secret credentials.
 			// No VolumeSnapshot is provided when resolving delete secret names, since the VolumeSnapshot may or may not exist at delete time.
-			snapshotterSecretsRef, err := getSecretReferenceMany(ctrl.client, snapshotClass.Parameters, content.Name, nil)
+			snapshotterSecretsRef, err := getSecretReferenceMany(ctrl.client, snapshotterSecretParams, snapshotClass.Parameters, content.Name, nil)
 			if err != nil {
 				return err
 			}
