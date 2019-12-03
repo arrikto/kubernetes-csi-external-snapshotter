@@ -56,6 +56,9 @@ const (
 	// fields in subsequent CSI calls or Kubernetes API objects.
 	csiParameterPrefix = "csi.storage.k8s.io/"
 
+	prefixedCryptSecretNameKey      = csiParameterPrefix + "crypt-secret-name"
+	prefixedCryptSecretNamespaceKey = csiParameterPrefix + "crypt-secret-namespace"
+
 	prefixedSnapshotterSecretNameKey      = csiParameterPrefix + "snapshotter-secret-name"
 	prefixedSnapshotterSecretNamespaceKey = csiParameterPrefix + "snapshotter-secret-namespace"
 
@@ -69,13 +72,21 @@ const (
 	VolumeSnapshotFinalizer        = "snapshot.storage.kubernetes.io/volumesnapshot-protection"
 )
 
-var snapshotterSecretParams = deprecatedSecretParamsMap{
-	name:                         "Snapshotter",
-	deprecatedSecretNameKey:      snapshotterSecretNameKey,
-	deprecatedSecretNamespaceKey: snapshotterSecretNamespaceKey,
-	secretNameKey:                prefixedSnapshotterSecretNameKey,
-	secretNamespaceKey:           prefixedSnapshotterSecretNamespaceKey,
-}
+var (
+	snapshotterSecretParams = deprecatedSecretParamsMap{
+		name:                         "Snapshotter",
+		deprecatedSecretNameKey:      snapshotterSecretNameKey,
+		deprecatedSecretNamespaceKey: snapshotterSecretNamespaceKey,
+		secretNameKey:                prefixedSnapshotterSecretNameKey,
+		secretNamespaceKey:           prefixedSnapshotterSecretNamespaceKey,
+	}
+
+	cryptSecretParams = deprecatedSecretParamsMap{
+		name:               "Crypt",
+		secretNameKey:      prefixedCryptSecretNameKey,
+		secretNamespaceKey: prefixedCryptSecretNamespaceKey,
+	}
+)
 
 func snapshotKey(vs *crdv1.VolumeSnapshot) string {
 	return fmt.Sprintf("%s/%s", vs.Namespace, vs.Name)
@@ -216,6 +227,7 @@ func verifyAndGetSecretNameAndNamespaceTemplate(secret deprecatedSecretParamsMap
 // - ${volumesnapshotcontent.name}
 // - ${volumesnapshot.namespace}
 // - ${volumesnapshot.name}
+// - ${volumesnapshot.spec.source.name}
 // - ${volumesnapshot.annotations['ANNOTATION_KEY']} (e.g. ${pvc.annotations['example.com/snapshot-create-secret-name']})
 //
 // supported tokens for namespace resolution:
@@ -272,6 +284,7 @@ func getSecretReference(secretParams deprecatedSecretParamsMap, snapshotClassPar
 		for k, v := range snapshot.Annotations {
 			nameParams["volumesnapshot.annotations['"+k+"']"] = v
 		}
+		nameParams["volumesnapshot.spec.source.name"] = snapshot.Spec.Source.Name
 	}
 	resolvedName, err := resolveTemplate(nameTemplate, nameParams)
 	if err != nil {
@@ -466,6 +479,8 @@ func removePrefixedParameters(param map[string]string) (map[string]string, error
 			switch k {
 			case prefixedSnapshotterSecretNameKey:
 			case prefixedSnapshotterSecretNamespaceKey:
+			case prefixedCryptSecretNameKey:
+			case prefixedCryptSecretNamespaceKey:
 			default:
 				return map[string]string{}, fmt.Errorf("found unknown parameter key \"%s\" with reserved namespace %s", k, csiParameterPrefix)
 			}

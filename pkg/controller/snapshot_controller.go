@@ -546,6 +546,14 @@ func (ctrl *csiSnapshotController) getCreateSnapshotInput(snapshot *crdv1.Volume
 	if err != nil {
 		return nil, nil, "", nil, err
 	}
+
+	// Add user's crypt key to the request
+	cryptSecretRef, err := getSecretReference(cryptSecretParams, class.Parameters, contentName, snapshot)
+	if err != nil {
+		return nil, nil, "", nil, err
+	}
+	snapshotterSecretsRef = append(snapshotterSecretsRef, cryptSecretRef)
+
 	snapshotterCredentials, err := getCredentialsMany(ctrl.client, snapshotterSecretsRef)
 	if err != nil {
 		return nil, nil, "", nil, err
