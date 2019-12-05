@@ -17,11 +17,12 @@ limitations under the License.
 package controller
 
 import (
+	"reflect"
+	"testing"
+
 	crdv1 "github.com/kubernetes-csi/external-snapshotter/pkg/apis/volumesnapshot/v1alpha1"
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"reflect"
-	"testing"
 )
 
 func TestGetSecretReference(t *testing.T) {
@@ -107,7 +108,7 @@ func TestGetSecretReference(t *testing.T) {
 
 	for k, tc := range testcases {
 		t.Run(k, func(t *testing.T) {
-			ref, err := getSecretReference(tc.params, tc.snapContentName, tc.snapshot)
+			ref, err := getSecretReference(snapshotterSecretParams, tc.params, tc.snapContentName, tc.snapshot)
 			if err != nil {
 				if tc.expectErr {
 					return
