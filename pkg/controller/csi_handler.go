@@ -83,6 +83,8 @@ func (handler *csiHandler) CreateSnapshot(snapshot *crdv1.VolumeSnapshot, volume
 	}
 	// Add VS name
 	newParameters["vs-name"] = snapshot.Name
+	// Add VS namespace
+	newParameters["vs-namespace"] = snapshot.Namespace
 	return handler.snapshotter.CreateSnapshot(ctx, snapshotName, volume, newParameters, snapshotterCredentials)
 }
 
