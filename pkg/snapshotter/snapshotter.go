@@ -34,7 +34,7 @@ import (
 // Snapshotter implements CreateSnapshot/DeleteSnapshot operations against a remote CSI driver.
 type Snapshotter interface {
 	// CreateSnapshot creates a snapshot for a volume
-	CreateSnapshot(ctx context.Context, snapshotName string, volume *v1.PersistentVolume, parameters map[string]string, snapshotterCredentials map[string]string) (driverName string, snapshotId string, timestamp int64, size int64, readyToUse bool, progress_cnt int32, progress_msg string, err error)
+	CreateSnapshot(ctx context.Context, snapshotName string, volume *v1.PersistentVolume, parameters map[string]string, snapshotterCredentials map[string]string) (driverName string, snapshotId string, timestamp int64, size int64, readyToUse bool, err error)
 
 	// DeleteSnapshot deletes a snapshot from a volume
 	DeleteSnapshot(ctx context.Context, snapshotID string, snapshotterCredentials map[string]string) (err error)
@@ -53,17 +53,17 @@ func NewSnapshotter(conn *grpc.ClientConn) Snapshotter {
 	}
 }
 
-func (s *snapshot) CreateSnapshot(ctx context.Context, snapshotName string, volume *v1.PersistentVolume, parameters map[string]string, snapshotterCredentials map[string]string) (string, string, int64, int64, bool, int32, string, error) {
+func (s *snapshot) CreateSnapshot(ctx context.Context, snapshotName string, volume *v1.PersistentVolume, parameters map[string]string, snapshotterCredentials map[string]string) (string, string, int64, int64, bool, error) {
 	klog.V(5).Infof("CSI CreateSnapshot: %s", snapshotName)
 	if volume.Spec.CSI == nil {
-		return "", "", 0, 0, false, 0, "", fmt.Errorf("CSIPersistentVolumeSource not defined in spec")
+		return "", "", 0, 0, false, fmt.Errorf("CSIPersistentVolumeSource not defined in spec")
 	}
 
 	client := csi.NewControllerClient(s.conn)
 
 	driverName, err := csirpc.GetDriverName(ctx, s.conn)
 	if err != nil {
-		return "", "", 0, 0, false, 0, "", err
+		return "", "", 0, 0, false, err
 	}
 
 	req := csi.CreateSnapshotRequest{
@@ -75,15 +75,15 @@ func (s *snapshot) CreateSnapshot(ctx context.Context, snapshotName string, volu
 
 	rsp, err := client.CreateSnapshot(ctx, &req)
 	if err != nil {
-		return "", "", 0, 0, false, 0, "", err
+		return "", "", 0, 0, false, err
 	}
 
 	klog.V(5).Infof("CSI CreateSnapshot: %s driver name [%s] snapshot ID [%s] time stamp [%d] size [%d] readyToUse [%v]", snapshotName, driverName, rsp.Snapshot.SnapshotId, rsp.Snapshot.CreationTime, rsp.Snapshot.SizeBytes, rsp.Snapshot.ReadyToUse)
 	creationTime, err := timestampToUnixTime(rsp.Snapshot.CreationTime)
 	if err != nil {
-		return "", "", 0, 0, false, 0, "", err
+		return "", "", 0, 0, false, err
 	}
-	return driverName, rsp.Snapshot.SnapshotId, creationTime, rsp.Snapshot.SizeBytes, rsp.Snapshot.ReadyToUse, rsp.ProgressCnt, rsp.ProgressMsg, nil
+	return driverName, rsp.Snapshot.SnapshotId, creationTime, rsp.Snapshot.SizeBytes, rsp.Snapshot.ReadyToUse, nil
 }
 
 func (s *snapshot) DeleteSnapshot(ctx context.Context, snapshotID string, snapshotterCredentials map[string]string) (err error) {
